@@ -5,45 +5,52 @@ from mock_data import CUSTOMERS, ORDERS
 
 # Fetch a customer by matching against multiple possible identifiers
 def get_customer(query: str) -> str:
-    # Normalize input for consistent matching (ignore case + extra spaces)
     query = query.strip().lower()
 
-    # Iterate through all customers in the dataset
     for customer in CUSTOMERS.values():
-        # Match against customer_id, email, or name
-        # This makes the tool flexible in how it can be called
         if (
             query == customer["customer_id"].lower()
             or query == customer["email"].lower()
             or query == customer["name"].lower()
         ):
-            # Return the matched customer as a JSON string
             return json.dumps(customer)
 
-    # If no match is found, return a structured error response
     return json.dumps({
-        "error": "customer_not_found",
-        "message": f"No customer found matching '{query}'. "
-                   "Please check the name, email, or customer ID and try again."
+        "error": {
+            "type": "validation",
+            "retryable": False,
+            "message": (
+                f"No customer found matching '{query}'. The input may be "
+                "misspelled or in the wrong format. Customer IDs follow the "
+                "format CUST-XXXX. You can also search by full name or email "
+                "address. Ask the customer to verify their details and try again."
+            )
+        }
     })
 
 
 # Fetch an order using its order ID
 def lookup_order(order_id: str) -> str:
-    # Normalize input (strip spaces + standardize casing)
     order_id = order_id.strip().upper()
 
-    # Check if the order exists in the dataset
     if order_id in ORDERS:
-        # Return the order details as a JSON string
         return json.dumps(ORDERS[order_id])
 
-    # Return a structured error if the order is not found
-    return json.dumps({
-        "error": "order_not_found",
-        "message": f"No order found with ID '{order_id}'. "
-                   "Please check the order ID and try again."
-    })
+    return json.dumps(
+        {
+            "error": {
+                "type": "validation",
+                "retryable": False,
+                "message": (
+                    f"No order found with ID '{order_id}'. The order ID may be "
+                    "incorrect or in the wrong format. Order IDs follow the format "
+                    "ORD-XXXX (e.g. 'ORD-8821'). Ask the customer to double-check the "
+                    "order number from their confirmation email/receipt and try again."
+                ),
+            }
+        }
+    )
+
 
 
 # Central dispatcher that routes tool calls to the correct function
