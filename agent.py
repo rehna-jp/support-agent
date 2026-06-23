@@ -28,14 +28,19 @@ Always verify who you are speaking with before discussing account details."""
 
 # Core agent loop: takes a user message and returns a final response
 def run_agent(user_message: str) -> str:
-    # Initialize conversation history with the user's first message
     conversation_history = [
         {"role": "user", "content": user_message}
     ]
 
-    # Loop until Claude finishes the interaction
+    # Session state tracks verified identity and anything else
+    # that needs to persist across tool calls within this conversation.
+    # It starts empty and gets populated as tools run successfully.
+    session_state = {
+        "verified_customer_id": None,
+        "verified_customer_name": None
+    }
+
     while True:
-        # Send current state (history + tools + system prompt) to Claude
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
@@ -44,66 +49,31 @@ def run_agent(user_message: str) -> str:
             messages=conversation_history
         )
 
-        # Always append Claude's response immediately
-        # This preserves the full chain: assistant → tool call → tool result → next turn
         conversation_history.append({
             "role": "assistant",
             "content": response.content
         })
 
-        # If Claude has finished responding (no more tool calls needed)
         if response.stop_reason == "end_turn":
-            # Extract and return the text response from content blocks
             for block in response.content:
                 if hasattr(block, "text"):
                     return block.text
-            # Fallback in case no text block is found
             return ""
 
-        # If Claude wants to use tools
         if response.stop_reason == "tool_use":
             tool_results = []
 
-            # Iterate through all tool_use blocks (Claude may call multiple tools at once)
             for block in response.content:
                 if block.type == "tool_use":
-                    # Execute the tool locally with provided inputs
-                    result = run_tool(block.name, block.input)
-
-                    # Collect tool results in the required format
+                    # session_state gets passed into every tool call
+                    result = run_tool(block.name, block.input, session_state)
                     tool_results.append({
                         "type": "tool_result",
-                        "tool_use_id": block.id,  # Links result to specific tool call
+                        "tool_use_id": block.id,
                         "content": result
                     })
 
-            # Send all tool results back in a single user message
-            # This allows Claude to continue reasoning with fresh data
             conversation_history.append({
                 "role": "user",
                 "content": tool_results
             })
-
-
-# Entry point for running the agent in a CLI loop
-if __name__ == "__main__":
-    print("Customer Support Agent, Stage 1")
-    print("Type 'quit' to exit")
-    print("=" * 40)
-
-    while True:
-        # Read user input from terminal
-        user_input = input("\nCustomer: ").strip()
-
-        # Ignore empty input
-        if not user_input:
-            continue
-
-        # Exit conditions
-        if user_input.lower() in ("quit", "exit", "q"):
-            break
-
-        # Print agent response (stream-like UX with flush)
-        print("\nAgent:", end=" ", flush=True)
-        response = run_agent(user_input)
-        print(response)
